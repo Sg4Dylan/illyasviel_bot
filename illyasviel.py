@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 
-# webhook address
-# -> https://[YOUR WEBSITE]/whook/[YOUR TOKEN]
+# webhook address https://[YOUR WEBSITE]/whook/[YOUR TOKEN]
 # setWebhook address
-# -> https://api.telegram.org/bot[YOUR TOKEN]/setWebhook?url=https://[YOUR WEBSITE]/whook/[YOUR TOKEN]/hook
+# https://api.telegram.org/bot[YOUR TOKEN]/setWebhook?url=https://[YOUR WEBSITE]/whook/[YOUR TOKEN]/hook
 
 # import for script core part
 import requests
@@ -23,17 +22,17 @@ from tornado.options import define, options, parse_command_line
 # multi-thread async
 from tornado.concurrent import run_on_executor
 from concurrent.futures import ThreadPoolExecutor
+import config
 
-bot_token = '[YOUR TOKEN]'
+bot_token = config.bot_token
 # Tornado define
 define("port", default=8022, help="run on the given port", type=int)
 
-# Telegram Bot API URL
 url = 'https://api.telegram.org/bot%s/' % bot_token
-# Local URL for ImageEventHandler
-bot_url = 'https://[YOUR WEBSITE]/whook/%s/' % bot_token
+bot_url = config.bot_callback_url
 
 def illyasviel_answerInlineQuery(update: dict, queryResult: dict):
+    # print(json.dumps(queryResult))
     r = requests.post(
         url + 'answerInlineQuery',
         data = {
@@ -53,23 +52,16 @@ def illyasviel_picture(update: dict) -> bool:
             return False
         queryInput = urllib.parse.quote_plus(queryInput)
         queryResult = []
-        # append dict into list
-        for mode in range(0,2):
+        for mode in range(len(config.images_dict)):
             tempDict = {}
             tempDict['type'] = "photo"
             tempDict['id'] = uuid.uuid4().hex
-            # set size to avoid display blank picture in timeline
-            if mode == 0:
-                tempDict['photo_width'] = 473
-                tempDict['photo_height'] = 512
-            else:
-                tempDict['photo_width'] = 512
-                tempDict['photo_height'] = 300
+            tempDict['photo_width'] = config.images_dict[str(mode)][0]
+            tempDict['photo_height'] = config.images_dict[str(mode)][1]
             tempDict['photo_url'] = bot_url + "img?thumb=0&mode=%s&msg=%s" % (mode, queryInput)
             tempDict['thumb_url'] = bot_url + "img?thumb=1&mode=%s&msg=%s" % (mode, queryInput)
             tempDict['title'] = str(mode)
             queryResult.append(tempDict)
-        # callback API
         illyasviel_answerInlineQuery(update, queryResult)
     return True
 
@@ -86,6 +78,7 @@ def illyasviel_null(update: dict) -> bool:
     return False
 
 
+# 接收来自TG的消息请求用
 class MessageEventHandler(tornado.web.RequestHandler):
     executor = ThreadPoolExecutor(10)
 
@@ -124,28 +117,20 @@ class ImageEventHandler(tornado.web.RequestHandler):
         mode = self.get_argument("mode")
         message = self.get_argument("msg")
         thumb = self.get_argument("thumb")
-        # set image info
-        # path prefix
-        filename = "/tmp/"
-        pos = 256
-        font_size = 40
-        font_color = (0,0,0)
-        if mode == "0":
-            filename += "file_50820.png" #chino
-            pos = 420
-            font_size = 60
-        else:
-            filename += "tomcat.jpg" # tom newspaper
-            pos = 160
+        # load setting
+        pos = config.images_dict[mode][2]
+        font_size = config.images_dict[mode][3]
+        font_color = config.images_dict[mode][4]
+        filename = config.image_path + config.images_dict[mode][5]
+        # gen picture
         img = Image.open(filename)
         draw = ImageDraw.Draw(img)
-        # draw text
-        font_path = "/tmp/apple.ttf"
-        font = ImageFont.truetype(font_path, font_size)
+        font = ImageFont.truetype(config.font_path, font_size)
         imgW, imgH = img.size
         textW, textH = draw.textsize(message,font=font)
+        # print(textW, textH)
         draw.text(((imgW-textW)/2,pos),message,font_color,font=font)
-        # generate thumbnail
+        # thumb
         if thumb == "1":
             img.thumbnail((300,300),Image.ANTIALIAS)
         # gen file pointer
